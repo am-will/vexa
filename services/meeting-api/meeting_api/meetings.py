@@ -1031,6 +1031,7 @@ async def request_bot(
         "max_wait_for_admission": 900000, # 15 min
         "max_time_left_alone": 900000,    # 15 min
         "no_one_joined_timeout": 120000,  # 2 min
+        "max_silent_time": 0,             # disabled unless explicitly requested
     }
 
     # Resolution order: per-request → user.data.bot_config → system defaults
@@ -1052,6 +1053,7 @@ async def request_bot(
     resolved_max_wait_for_admission = resolve_timeout("max_wait_for_admission")
     resolved_max_time_left_alone = resolve_timeout("max_time_left_alone")
     resolved_no_one_joined_timeout = resolve_timeout("no_one_joined_timeout")
+    resolved_max_silent_time = resolve_timeout("max_silent_time")
 
     # Store resolved timeouts in meeting.data for GET /bots visibility
     meeting_data["resolved_timeouts"] = {
@@ -1059,6 +1061,7 @@ async def request_bot(
         "max_wait_for_admission": resolved_max_wait_for_admission,
         "max_time_left_alone": resolved_max_time_left_alone,
         "no_one_joined_timeout": resolved_no_one_joined_timeout,
+        "max_silent_time": resolved_max_silent_time,
     }
     new_meeting.data = meeting_data
     await db.commit()
@@ -1082,6 +1085,7 @@ async def request_bot(
             "waitingRoomTimeout": resolved_max_wait_for_admission,
             "noOneJoinedTimeout": resolved_no_one_joined_timeout,
             "everyoneLeftTimeout": resolved_max_time_left_alone,
+            "silenceTimeout": resolved_max_silent_time,
         },
         "meetingApiCallbackUrl": f"{MEETING_API_URL}/bots/internal/callback/exited",
         "recordingEnabled": user_recording_config.get("enabled", os.getenv("RECORDING_ENABLED", "true").lower() == "true"),

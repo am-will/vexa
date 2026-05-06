@@ -25,12 +25,14 @@ function generateReasonTokens(platform: string): {
   removedToken: string;
   leftAloneToken: string;
   startupAloneToken: string;
+  silenceToken: string;
 } {
   const platformUpper = platform.toUpperCase();
   return {
     removedToken: `${platformUpper}_BOT_REMOVED_BY_ADMIN`,
     leftAloneToken: `${platformUpper}_BOT_LEFT_ALONE_TIMEOUT`,
-    startupAloneToken: `${platformUpper}_BOT_STARTUP_ALONE_TIMEOUT`
+    startupAloneToken: `${platformUpper}_BOT_STARTUP_ALONE_TIMEOUT`,
+    silenceToken: `${platformUpper}_BOT_SILENCE_TIMEOUT`
   };
 }
 
@@ -214,6 +216,10 @@ export async function runMeetingFlow(
         await gracefulLeaveFunction(page, 0, "startup_alone_timeout");
         return;
       }
+      if (msg === tokens.silenceToken || msg.includes(tokens.silenceToken)) {
+        await gracefulLeaveFunction(page, 0, "silence_timeout");
+        return;
+      }
 
       const errorDetails = {
         error_message: error?.message,
@@ -240,6 +246,10 @@ export async function runMeetingFlow(
     }
     if (msg.includes(tokens.startupAloneToken)) {
       await gracefulLeaveFunction(page, 0, "startup_alone_timeout");
+      return;
+    }
+    if (msg.includes(tokens.silenceToken)) {
+      await gracefulLeaveFunction(page, 0, "silence_timeout");
       return;
     }
 

@@ -408,6 +408,7 @@ async def bot_exit_callback(
                 "left_alone": MeetingCompletionReason.LEFT_ALONE,
                 "left_alone_timeout": MeetingCompletionReason.LEFT_ALONE,
                 "startup_alone_timeout": MeetingCompletionReason.LEFT_ALONE,
+                "silence_timeout": MeetingCompletionReason.STOPPED,
                 "meeting_ended_by_host": MeetingCompletionReason.STOPPED,
                 "normal_completion": MeetingCompletionReason.STOPPED,
                 "post_join_setup_error": MeetingCompletionReason.STOPPED,  # FM-001 — gmeet end-of-meeting nav

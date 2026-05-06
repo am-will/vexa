@@ -98,7 +98,7 @@ export async function joinGoogleMeeting(
         }
 
         await joinButton.el!.click();
-        log(`Bot joined Google Meet via fallback (Ask to join).`);
+        log(`Clicked Google Meet Ask to join fallback; waiting for host admission.`);
       }
     } catch (e) {
       // No button found — take diagnostic screenshot and fail

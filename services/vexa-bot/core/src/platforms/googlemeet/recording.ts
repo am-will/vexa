@@ -575,12 +575,17 @@ export async function startGoogleRecording(page: Page, botConfig: BotConfig): Pr
             const everyoneLeftTimeoutSeconds = leaveCfg.everyoneLeftTimeout
               ? Math.floor(Number(leaveCfg.everyoneLeftTimeout) / 1000)
               : Number(leaveCfg.everyoneLeftTimeoutSeconds ?? 60);
+            const silenceTimeoutSeconds = leaveCfg.silenceTimeout
+              ? Math.floor(Number(leaveCfg.silenceTimeout) / 1000)
+              : Number(leaveCfg.silenceTimeoutSeconds ?? 0);
 
             let aloneTime = 0;
             let lastParticipantCount = 0;
             let speakersIdentified = false;
             let hasEverHadMultipleParticipants = false;
             let monitoringStopped = false;
+            const silenceMonitoringStartMs = Date.now();
+            let lastSilenceLogBucket = -1;
 
             const stopMonitoring = (
               reason: string,
@@ -602,6 +607,24 @@ export async function startGoogleRecording(page: Page, botConfig: BotConfig): Pr
             };
 
             const checkInterval = setInterval(() => {
+              if (silenceTimeoutSeconds > 0 && !degradedNoMedia) {
+                const lastAudioMs = (window as any).__vexaLastAudioActivityTs || 0;
+                const silenceStartedMs = lastAudioMs > 0 ? lastAudioMs : silenceMonitoringStartMs;
+                const silentForSeconds = Math.floor((Date.now() - silenceStartedMs) / 1000);
+                if (silentForSeconds >= silenceTimeoutSeconds) {
+                  (window as any).logBot(`Google Meet audio has been silent for ${silenceTimeoutSeconds} seconds. Stopping recorder...`);
+                  stopMonitoring("silence_timeout", () =>
+                    reject(new Error("GOOGLE_MEET_BOT_SILENCE_TIMEOUT"))
+                  );
+                  return;
+                }
+                const logBucket = Math.floor(silentForSeconds / 300);
+                if (silentForSeconds > 0 && logBucket > 0 && logBucket !== lastSilenceLogBucket) {
+                  lastSilenceLogBucket = logBucket;
+                  (window as any).logBot(`Meeting audio has been silent for ${Math.floor(silentForSeconds / 60)}m. Silence timeout in ${Math.ceil((silenceTimeoutSeconds - silentForSeconds) / 60)}m.`);
+                }
+              }
+
               // Check participant count using the comprehensive helper
               const currentParticipantCount = (window as any).getGoogleMeetActiveParticipantsCount ? (window as any).getGoogleMeetActiveParticipantsCount() : 0;
 

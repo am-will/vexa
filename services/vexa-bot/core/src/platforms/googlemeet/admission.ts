@@ -64,9 +64,27 @@ export async function checkForGoogleAdmissionIndicators(page: Page): Promise<boo
   return false;
 }
 
+async function checkForStableGoogleAdmission(page: Page): Promise<boolean> {
+  const admissionFound = await checkForGoogleAdmissionIndicators(page);
+  if (!admissionFound) return false;
+
+  // Google Meet can briefly expose in-call controls (notably "Leave call") while
+  // the waiting-room page is still settling after "Ask to join". Do not report
+  // admitted until the signal survives the lobby text rendering window.
+  await page.waitForTimeout(2500);
+
+  const waitingRoomVisible = await checkForWaitingRoomIndicators(page);
+  if (waitingRoomVisible) {
+    log("⚠️ Admission indicator was transient; waiting-room text is visible after settle window");
+    return false;
+  }
+
+  return await checkForGoogleAdmissionIndicators(page);
+}
+
 // Silent admission check (doesn't send callbacks) - used for verification
 export async function checkForGoogleAdmissionSilent(page: Page): Promise<boolean> {
-  return await checkForGoogleAdmissionIndicators(page);
+  return await checkForStableGoogleAdmission(page);
 }
 
 // Helper function to check for waiting room indicators
@@ -102,7 +120,7 @@ export async function waitForGoogleMeetingAdmission(
     
     // Check for any visible admission indicator (multiple selectors for robustness)
     // If meeting controls are visible, the bot is admitted — lobby indicators are unreliable
-    const initialAdmissionFound = await checkForGoogleAdmissionIndicators(page);
+    const initialAdmissionFound = await checkForStableGoogleAdmission(page);
 
     if (initialAdmissionFound) {
       log(`Found Google Meet admission indicator: visible meeting controls - Bot is already admitted to the meeting!`);
@@ -173,7 +191,7 @@ export async function waitForGoogleMeetingAdmission(
           }
 
           // Check for admission indicators since waiting room disappeared and no rejection found
-          const admissionFound = await checkForGoogleAdmissionIndicators(page);
+          const admissionFound = await checkForStableGoogleAdmission(page);
 
           if (admissionFound) {
             log(`✅ Bot was admitted to the Google Meet meeting: meeting controls confirmed`);
@@ -218,14 +236,6 @@ export async function waitForGoogleMeetingAdmission(
           throw new Error("Bot admission was rejected by meeting admin");
         }
 
-        // Admission indicators — if meeting controls are visible, bot is admitted
-        // regardless of any residual lobby-like elements in the DOM
-        const admissionFound = await checkForGoogleAdmissionIndicators(page);
-        if (admissionFound) {
-          log("✅ Bot admitted during polling window (meeting controls visible)");
-          return true;
-        }
-
         // If lobby appears later, switch to waiting-room handling by breaking
         const lobbyVisible = await checkForWaitingRoomIndicators(page);
         if (lobbyVisible) {
@@ -242,6 +252,12 @@ export async function waitForGoogleMeetingAdmission(
           stillInWaitingRoom = true;
           unknownStateDuration2 = 0;
           break;
+        }
+
+        const admissionFound = await checkForStableGoogleAdmission(page);
+        if (admissionFound) {
+          log("✅ Bot admitted during polling window (stable meeting controls visible)");
+          return true;
         }
 
         // Track unknown state for escalation
@@ -265,7 +281,7 @@ export async function waitForGoogleMeetingAdmission(
           if (!stillWaiting) {
             const isRejected2 = await checkForGoogleRejection(page);
             if (isRejected2) throw new Error("Bot admission was rejected by meeting admin");
-            const admissionFound2 = await checkForGoogleAdmissionIndicators(page);
+            const admissionFound2 = await checkForStableGoogleAdmission(page);
             if (admissionFound2) return true;
           }
           await page.waitForTimeout(checkInterval);
@@ -275,7 +291,7 @@ export async function waitForGoogleMeetingAdmission(
     
     // Final check after waiting/polling
     log("Performing final admission check after waiting/polling window...");
-    const finalAdmissionFound = await checkForGoogleAdmissionIndicators(page);
+    const finalAdmissionFound = await checkForStableGoogleAdmission(page);
     const finalLobbyVisible = await checkForWaitingRoomIndicators(page);
     if (finalAdmissionFound && !finalLobbyVisible) {
       await page.screenshot({ path: '/app/storage/screenshots/bot-checkpoint-2-admitted.png', fullPage: true });

@@ -399,6 +399,7 @@ class AutomaticLeave(BaseModel):
     max_wait_for_admission: Optional[int] = Field(None, description="Max time to wait for admission in ms")
     max_time_left_alone: Optional[int] = Field(None, description="Max time left alone before leaving in ms")
     no_one_joined_timeout: Optional[int] = Field(None, description="No one joined timeout in ms")
+    max_silent_time: Optional[int] = Field(None, description="Max continuous meeting-audio silence before leaving in ms")
     # Old names kept as aliases for backward compatibility (D1)
     waiting_room_timeout: Optional[int] = Field(None, description="[DEPRECATED] Use max_wait_for_admission")
     everyone_left_timeout: Optional[int] = Field(None, description="[DEPRECATED] Use max_time_left_alone")

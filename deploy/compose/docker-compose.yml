@@ -147,7 +147,7 @@ services:
       - ALLOW_PRIVATE_CALLBACKS=1
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
       - ../../services/runtime-api/profiles.yaml:/app/profiles.yaml:ro
     init: true
     depends_on:

@@ -332,15 +332,19 @@ test-transcription:
 		echo "  ✗ Transcription: test audio file not found at $(TEST_AUDIO)"; \
 		exit 1; \
 	fi; \
-	echo "Testing transcription at $$TX_URL ..."; \
-	RESP=$$(curl -s -X POST "$$TX_URL" \
+	TEST_TX_URL="$$TX_URL"; \
+	if echo "$$TEST_TX_URL" | grep -q 'host.docker.internal' && ! curl -sf --max-time 2 "http://host.docker.internal:8083/health" >/dev/null 2>&1; then \
+		TEST_TX_URL=$$(echo "$$TEST_TX_URL" | sed 's|host\.docker\.internal|localhost|'); \
+	fi; \
+	echo "Testing transcription at $$TEST_TX_URL ..."; \
+	BODY_FILE=$$(mktemp); \
+	HTTP=$$(curl -s -o "$$BODY_FILE" -X POST "$$TEST_TX_URL" \
 		-H "Authorization: Bearer $$TX_TOKEN" \
 		-F "file=@$(TEST_AUDIO)" \
 		-F "language=en" \
 		-F "model=large-v3-turbo" \
-		-w "\n%{http_code}" 2>&1); \
-	HTTP=$$(echo "$$RESP" | tail -1); \
-	BODY=$$(echo "$$RESP" | head -n -1); \
+		-w "%{http_code}" 2>/dev/null || echo "000"); \
+	BODY=$$(cat "$$BODY_FILE"); rm -f "$$BODY_FILE"; \
 	if [ "$$HTTP" = "200" ]; then \
 		TEXT=$$(echo "$$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('text','')[:80])" 2>/dev/null); \
 		if [ -n "$$TEXT" ]; then \

@@ -2,16 +2,24 @@
 // Keep this file free of runtime logic; export constants only.
 
 export const googleInitialAdmissionIndicators: string[] = [
-  // DOM fallback selectors — only indicators that do NOT appear in the lobby.
-  // DANGER: Leave call, toolbar, mic/camera toggles all exist in the lobby too!
-  // Primary admission signal is active MediaStreams (checked in admission.ts).
-  '[data-participant-id]',
-  '[data-self-name]',
-  'button[aria-label*="Share screen"]',
-  'button[aria-label*="Present now"]',
+  // Strong in-meeting-only indicators. Keep this deliberately strict:
+  // prejoin / "Ask to join" / lobby pages can expose self preview DOM such as
+  // [data-self-name], [data-participant-id], mic/camera controls, and even some
+  // toolbar-like buttons. Treating those as admission caused false ACTIVE states
+  // followed by immediate bot exit. The visible Leave call control is the most
+  // reliable signal that Meet actually admitted the bot into the call.
+  'button[aria-label="Leave call"]',
+  'button[aria-label*="Leave call"]',
 ];
 
 export const googleWaitingRoomIndicators: string[] = [
+  // Prejoin/join buttons are explicitly not-admitted states. If a click failed
+  // or Meet keeps the bot on prejoin, keep the bot in awaiting_admission instead
+  // of marking it active.
+  'button:has-text("Ask to join")',
+  'button:has-text("Join now")',
+  'button:has-text("Switch here")',
+
   // Modern waiting room text patterns (2024 Google Meet UI)
   'text="Asking to be let in..."',
   'text*="Asking to be let in"',

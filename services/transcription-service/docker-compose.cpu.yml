@@ -32,8 +32,19 @@ services:
       - WORKER_ID=1
       - MODEL_SIZE=${MODEL_SIZE:-medium}
       - DEVICE=cpu
-      - COMPUTE_TYPE=int8
+      - COMPUTE_TYPE=${COMPUTE_TYPE:-int8}
       - CPU_THREADS=${CPU_THREADS:-0}
+      - API_TOKEN=${API_TOKEN:-}
+      - MAX_CONCURRENT_TRANSCRIPTIONS=${MAX_CONCURRENT_TRANSCRIPTIONS:-1}
+      - MAX_QUEUE_SIZE=${MAX_QUEUE_SIZE:-4}
+      - FAIL_FAST_WHEN_BUSY=${FAIL_FAST_WHEN_BUSY:-true}
+      - BUSY_RETRY_AFTER_S=${BUSY_RETRY_AFTER_S:-1}
+      - BEAM_SIZE=${BEAM_SIZE:-5}
+      - BEST_OF=${BEST_OF:-5}
+      - VAD_FILTER=${VAD_FILTER:-true}
+      - VAD_MIN_SILENCE_DURATION_MS=${VAD_MIN_SILENCE_DURATION_MS:-160}
+      - REPETITION_PENALTY=${REPETITION_PENALTY:-1.1}
+      - NO_REPEAT_NGRAM_SIZE=${NO_REPEAT_NGRAM_SIZE:-3}
     volumes:
       - ./models:/app/models
     restart: unless-stopped
