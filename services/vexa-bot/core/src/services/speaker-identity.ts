@@ -26,11 +26,17 @@ const trackVotes = new Map<number, Map<string, number>>();
 /** Locked mappings: trackIndex → speakerName. Once set, permanent. */
 const lockedMappings = new Map<number, string>();
 
-/** Minimum votes to lock (reduced from 3 for faster locking with human participants) */
-const LOCK_THRESHOLD = 2;
+/**
+ * Minimum exclusive-speaker votes before locking a track→name mapping.
+ *
+ * A wrong human name is much worse than an unmapped speaker. Google Meet DOM
+ * active-speaker signals can be noisy/duplicated, especially during joins,
+ * overlaps, and layout changes, so require several consistent observations.
+ */
+const LOCK_THRESHOLD = 6;
 
-/** Minimum vote ratio to lock (70%) */
-const LOCK_RATIO = 0.7;
+/** Minimum vote ratio to lock (90%). */
+const LOCK_RATIO = 0.9;
 
 /** Track last audio activity time per track (for Zoom active-speaker disambiguation) */
 const trackLastAudioMs = new Map<number, number>();
@@ -169,7 +175,8 @@ async function queryBrowserState(
  * Resolve speaker name for a Google Meet audio track.
  *
  * If locked → return immediately (permanent).
- * If not locked → query browser, vote if single speaker.
+ * If not locked → query browser and vote only on exclusive active-speaker evidence.
+ * Prefer returning null/unknown over an unconfirmed human name.
  * Never return a name that's already taken by another track.
  */
 async function resolveGoogleMeetSpeakerName(
@@ -187,37 +194,23 @@ async function resolveGoogleMeetSpeakerName(
 
   const { speaking } = state;
 
-  // Single speaker → full vote (high confidence)
+  // Single speaker → vote. Return a human name only after the track is locked.
   if (speaking.length === 1) {
     const candidate = speaking[0];
     if (!isNameTaken(candidate, elementIndex)) {
       recordTrackVote(elementIndex, candidate, 1.0);
-      return getLockedMapping(elementIndex) || candidate;
+      return getLockedMapping(elementIndex);
     }
   }
 
-  // Two speakers overlapping → half vote for each (common in real conversation)
-  if (speaking.length === 2) {
-    for (const candidate of speaking) {
-      if (!isNameTaken(candidate, elementIndex)) {
-        recordTrackVote(elementIndex, candidate, 0.5);
-      }
-    }
-    // Return locked name if just locked, or top voted
-    const justLocked = getLockedMapping(elementIndex);
-    if (justLocked) return justLocked;
+  // Overlap is too ambiguous for Google Meet track identity. Do not vote on or
+  // return overlapping speaker candidates; one wrong early vote can poison the
+  // mapping for the rest of the meeting.
+  if (speaking.length >= 2) {
+    return null;
   }
 
-  // Zero or 3+ speaking — can't vote.
-  // Return top voted name only if it's not taken by another track.
-  const votes = trackVotes.get(elementIndex);
-  if (votes && votes.size > 0) {
-    const sorted = Array.from(votes.entries()).sort((a, b) => b[1] - a[1]);
-    for (const [name] of sorted) {
-      if (!isNameTaken(name, elementIndex)) return name;
-    }
-  }
-
+  // No exclusive evidence yet.
   return null;
 }
 

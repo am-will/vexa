@@ -207,6 +207,8 @@ Google Calendar event -> launchd local.vexa-calendar-watch every 60s -> vexa-cal
 
 Known caveat/fix: the watcher launch path is proven. Google Meet admission detection must stay strict: do not claim the bot is active/admitted unless a real in-meeting signal such as visible `Leave call` is present; prejoin/waiting-room pages can expose misleading DOM. Do not claim the bot is in the host waiting room unless host UI or a live bot screenshot/log confirms it.
 
+Speaker attribution policy: Google Meet DOM active-speaker signals are noisy. The local bot intentionally prefers unmapped/unknown speakers over wrong human names: Google Meet track→name locking now requires 6 exclusive-speaker votes at 90% consistency, overlap votes are ignored, and the participant-list-order fallback is disabled unless `VEXA_ENABLE_GMEET_PARTICIPANT_ORDER_FALLBACK=true` is explicitly set.
+
 ### `vexa-notes-watch` — local post-meeting notes automation
 
 Path:
