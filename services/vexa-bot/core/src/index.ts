@@ -2035,16 +2035,42 @@ export async function startPerSpeakerAudioCapture(pageToCaptureFrom: Page): Prom
       };
       const enableCaptions = (): void => {
         const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('button[aria-label], button'));
+        const labels = buttons.map(btn => normalize(btn.getAttribute('aria-label') || btn.innerText || '').toLowerCase());
+        if (labels.some(label => /turn off captions|hide captions|captions are on/i.test(label))) {
+          (window as any).__vexaCaptionsRequested = true;
+          return;
+        }
         const button = buttons.find(btn => {
           const label = normalize(btn.getAttribute('aria-label') || btn.innerText || '').toLowerCase();
-          return /turn on captions|show captions/i.test(label) && !/turn off|hide captions/i.test(label);
+          return /turn on captions|show captions/i.test(label) && !/turn off|hide captions|settings/i.test(label);
         });
         if (button) {
           try {
             button.click();
-            (window as any).logBot?.('[GMeetCaptions] Requested captions on');
+            (window as any).__vexaCaptionsRequested = true;
+            (window as any).__vexaCaptionEnableAttempts = ((window as any).__vexaCaptionEnableAttempts || 0) + 1;
+            (window as any).logBot?.('[GMeetCaptions] Requested captions on via button');
+            return;
           } catch (err: any) {
             (window as any).logBot?.(`[GMeetCaptions] Could not click captions button: ${err.message}`);
+          }
+        }
+
+        // Fallback: Google Meet's keyboard shortcut for captions is commonly "c".
+        // Only use it when we cannot see an enabled/off state, and rate-limit it so
+        // we do not accidentally toggle captions back off on future scans.
+        const lastKeyAttempt = (window as any).__vexaCaptionKeyboardAttemptTs || 0;
+        const now = Date.now();
+        if (!(window as any).__vexaCaptionsRequested && now - lastKeyAttempt > 30000) {
+          try {
+            (window as any).__vexaCaptionKeyboardAttemptTs = now;
+            document.body.focus?.();
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', code: 'KeyC', bubbles: true }));
+            document.dispatchEvent(new KeyboardEvent('keyup', { key: 'c', code: 'KeyC', bubbles: true }));
+            (window as any).__vexaCaptionsRequested = true;
+            (window as any).logBot?.('[GMeetCaptions] Requested captions on via keyboard fallback');
+          } catch (err: any) {
+            (window as any).logBot?.(`[GMeetCaptions] Could not use caption keyboard fallback: ${err.message}`);
           }
         }
       };
