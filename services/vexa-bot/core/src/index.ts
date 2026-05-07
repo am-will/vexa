@@ -1670,10 +1670,9 @@ async function handlePerSpeakerAudioData(speakerIndex: number, audioDataArray: n
         log(`[📡 SPEAKER EVENT] "${newName}" joined → Redis`);
       }
 
-      // Optional last-resort fallback: assign by participant list order if explicitly enabled.
-      // Disabled by default for Google Meet because participant DOM order does not reliably
-      // match MediaStream/audio-track order. Wrong names are worse than unmapped speakers.
-      if (!currentName && platformKey === 'googlemeet' && process.env.VEXA_ENABLE_GMEET_PARTICIPANT_ORDER_FALLBACK === 'true') {
+      // Fallback: if unmapped for 15s+ and GMeet, assign by participant list order.
+      // This handles the case where speaking detection is completely broken (stale CSS selectors).
+      if (!currentName && platformKey === 'googlemeet') {
         const firstAudio = speakerLastAudioMs.get(speakerId) || Date.now();
         if (Date.now() - firstAudio > 15_000) {
           try {
