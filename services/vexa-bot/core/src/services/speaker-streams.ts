@@ -256,6 +256,36 @@ export class SpeakerStreamManager {
         }
       }
 
+      // If Whisper already returned multiple segment boundaries in a single
+      // request, treat all but the trailing segment as stable enough to emit.
+      // Waiting for the same prefix to recur in a later request can drop most of
+      // a meeting when local ASR is slower than real time or responses arrive
+      // after the buffer has moved on. The final segment is still held back
+      // because it is the one most likely to be actively forming.
+      if (segments.length > 1) {
+        const stableSegCount = segments.length - 1;
+        const baseWindowMs = buffer.windowStartMs;
+        for (let i = 0; i < stableSegCount; i++) {
+          const seg = segments[i];
+          const text = seg.text.trim();
+          if (!text || !this.onSegmentConfirmed) continue;
+          if (isHallucination(text)) {
+            log(`[SpeakerStreams] [FILTERED] Hallucination segment for "${buffer.speakerName}": "${text.substring(0, 60)}"`);
+            continue;
+          }
+          buffer.windowStartMs = baseWindowMs + Math.floor(seg.start * 1000);
+          const segEndMs = baseWindowMs + Math.floor(seg.end * 1000);
+          const segmentId = `${buffer.speakerId}:${buffer.sequenceNumber}`;
+          this.onSegmentConfirmed(buffer.speakerId, buffer.speakerName, text, buffer.windowStartMs, segEndMs, segmentId);
+          buffer.sequenceNumber++;
+          buffer.lastConfirmedText = text;
+        }
+        const lastStableSeg = segments[stableSegCount - 1];
+        this.advanceOffset(buffer, lastStableSeg.end);
+        buffer.windowStartMs = baseWindowMs + Math.floor(lastStableSeg.end * 1000);
+        return;
+      }
+
       // No prefix confirmed yet — fall through to full-text check
     }
 
