@@ -32,6 +32,7 @@ import { SileroVAD } from './services/vad';
 import { isHallucination } from './services/hallucination-filter';
 import { SpeakerStreamHandle } from './services/audio';
 import { RawCaptureService } from './services/raw-capture';
+import { GoogleMeetCaptionAccumulator } from './platforms/googlemeet/captions';
 
 // Module-level variables to store current configuration
 let currentLanguage: string | null | undefined = null;
@@ -62,6 +63,7 @@ let activeVideoRecordingService: VideoRecordingService | null = null;
 let currentBotResourceSampler: ReturnType<typeof startBotResourceSampler> | null = null;
 let botPaSinkModuleId: string | null = null; // PulseAudio module ID for per-bot sink cleanup
 let currentBotConfig: BotConfig | null = null;
+const googleMeetCaptionAccumulator = new GoogleMeetCaptionAccumulator(5000, 5000, "Will's Meeting Bot");
 export function setActiveRecordingService(svc: RecordingService | null): void {
   activeRecordingService = svc;
 }
@@ -838,6 +840,22 @@ async function performGracefulLeave(
     log(`[Speaker Events] Failed to read: ${e?.message}`);
   }
 
+  // Read passive Google Meet caption side-channel events. These are not used to
+  // mutate live speaker labels yet; meeting-api stores them under
+  // meeting.data.caption_events for post-meeting speaker normalization.
+  let captionEvents: any[] = [];
+  try {
+    if (currentPlatform === "google_meet") {
+      captionEvents = googleMeetCaptionAccumulator.snapshot();
+      if (captionEvents.length === 0 && page && !page.isClosed()) {
+        captionEvents = await page.evaluate(() => (window as any).__vexaCaptionEvents || []);
+      }
+      log(`[Caption Events] Read ${captionEvents.length} Google Meet caption events`);
+    }
+  } catch (e: any) {
+    log(`[Caption Events] Failed to read: ${e?.message}`);
+  }
+
   // v0.10.5.3 Pack T — fetch the final resource summary BEFORE we stop
   // the sampler. Pack O's ring buffer flush happens after — last log line
   // emitted is the cgroup summary, so it's included in bot_logs too.
@@ -882,6 +900,7 @@ async function performGracefulLeave(
         statusMapping.completionReason,
         statusMapping.failureStage,
         speakerEvents.length > 0 ? speakerEvents : undefined,
+        captionEvents.length > 0 ? captionEvents : undefined,
         finalBotLogs.length > 0 ? finalBotLogs : undefined,
         finalBotResources
       );
@@ -894,6 +913,7 @@ async function performGracefulLeave(
         final_callback_reason: finalCallbackReason,
         final_callback_exit_code: finalCallbackExitCode,
         speaker_event_count: speakerEvents.length,
+        caption_event_count: captionEvents.length,
       });
     } catch (callbackError: any) {
       logJSON({
@@ -1869,6 +1889,22 @@ async function handleTeamsCaptionData(speakerName: string, captionText: string, 
 }
 
 /**
+ * Passive Google Meet caption side-channel.
+ *
+ * Google Meet does not currently route Vexa's per-speaker audio by captions;
+ * it maps audio tracks through DOM active-speaker voting. This callback keeps
+ * captions as additional evidence for post-meeting speaker-name normalization
+ * without changing the live audio/transcription pipeline yet.
+ */
+async function handleGoogleMeetCaptionData(speakerName: string, captionText: string, timestampMs: number): Promise<void> {
+  const sessionStartMs = segmentPublisher?.sessionStartMs || 0;
+  const event = googleMeetCaptionAccumulator.add(speakerName, captionText, timestampMs, sessionStartMs);
+  if (!event) return;
+
+  log(`[📝 GMEET CAPTION] "${event.participant_name}": ${event.caption_text.substring(0, 80)}${event.caption_text.length > 80 ? '...' : ''}`);
+}
+
+/**
  * Expose the per-speaker audio callback to the browser and set up
  * per-speaker audio capture inside the page.
  *
@@ -1918,10 +1954,112 @@ export async function startPerSpeakerAudioCapture(pageToCaptureFrom: Page): Prom
     }
   }
 
+  try {
+    await pageToCaptureFrom.exposeFunction('__vexaGoogleMeetCaptionData', handleGoogleMeetCaptionData);
+    log('[PerSpeaker] Google Meet caption callback exposed — captions will be stored as side-channel evidence');
+  } catch (err: any) {
+    if (!err.message.includes('has been already registered')) {
+      log(`[PerSpeaker] Failed to expose Google Meet caption callback: ${err.message}`);
+    }
+  }
+
   // Set up per-speaker audio streams inside the browser using raw Web Audio API
   const handleCount = await pageToCaptureFrom.evaluate(async () => {
     const TARGET_SAMPLE_RATE = 16000;
     const BUFFER_SIZE = 4096;
+
+    function setupGoogleMeetCaptionSidecar(): void {
+      if ((window as any).__vexaGoogleMeetCaptionSidecarStarted) return;
+      (window as any).__vexaGoogleMeetCaptionSidecarStarted = true;
+      (window as any).__vexaCaptionEvents = (window as any).__vexaCaptionEvents || [];
+
+      const junk = [
+        'turn on captions', 'turn off captions', 'captions are on', 'captions are off',
+        'leave call', 'microphone', 'camera', 'present', 'activities', 'people', 'chat',
+        'host controls', 'meeting details', 'let participants', 'send messages', 'will\'s meeting bot'
+      ];
+      const seen = new Map<string, number>();
+
+      const normalize = (value: string): string => value.replace(/\s+/g, ' ').trim();
+      const isVisible = (el: HTMLElement): boolean => {
+        const rect = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden' && cs.opacity !== '0';
+      };
+      const looksLikeName = (value: string): boolean => {
+        const text = normalize(value);
+        const lower = text.toLowerCase();
+        return text.length >= 2 && text.length <= 80 && !junk.some(j => lower.includes(j));
+      };
+      const looksLikeCaptionText = (value: string): boolean => {
+        const text = normalize(value);
+        const lower = text.toLowerCase();
+        return text.length >= 2 && text.length <= 500 && !junk.some(j => lower === j || lower.includes(`${j}:`));
+      };
+      const emitCandidate = (speaker: string, text: string): void => {
+        const normalizedSpeaker = normalize(speaker);
+        const normalizedText = normalize(text);
+        if (!looksLikeName(normalizedSpeaker) || !looksLikeCaptionText(normalizedText)) return;
+        const key = `${normalizedSpeaker}\u0000${normalizedText}`;
+        const now = Date.now();
+        const last = seen.get(key) || 0;
+        if (now - last < 1500) return;
+        seen.set(key, now);
+        (window as any).__vexaCaptionEvents.push({
+          event_type: 'CAPTION_TEXT',
+          participant_name: normalizedSpeaker,
+          caption_text: normalizedText,
+          observed_at_ms: now,
+          source: 'google_meet_captions_browser',
+        });
+        (window as any).__vexaGoogleMeetCaptionData?.(normalizedSpeaker, normalizedText, now);
+      };
+      const scanCaptions = (): void => {
+        const candidates = Array.from(document.querySelectorAll<HTMLElement>('[aria-live], [role="log"], [role="status"], div'));
+        for (const el of candidates) {
+          if (!isVisible(el)) continue;
+          const rect = el.getBoundingClientRect();
+          // Captions render near the lower half of the Meet viewport. This avoids
+          // treating participant grids / side panels as caption blocks.
+          if (rect.top < window.innerHeight * 0.45) continue;
+          if (rect.width < 80 || rect.height < 16 || rect.height > 220) continue;
+          const lines = (el.innerText || '')
+            .split('\n')
+            .map(normalize)
+            .filter(Boolean);
+          if (lines.length < 2 || lines.length > 6) continue;
+          const speaker = lines[0];
+          const text = lines.slice(1).join(' ');
+          emitCandidate(speaker, text);
+        }
+      };
+      const enableCaptions = (): void => {
+        const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('button[aria-label], button'));
+        const button = buttons.find(btn => {
+          const label = normalize(btn.getAttribute('aria-label') || btn.innerText || '').toLowerCase();
+          return /turn on captions|show captions/i.test(label) && !/turn off|hide captions/i.test(label);
+        });
+        if (button) {
+          try {
+            button.click();
+            (window as any).logBot?.('[GMeetCaptions] Requested captions on');
+          } catch (err: any) {
+            (window as any).logBot?.(`[GMeetCaptions] Could not click captions button: ${err.message}`);
+          }
+        }
+      };
+
+      enableCaptions();
+      const observer = new MutationObserver(scanCaptions);
+      observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+      const scanInterval = setInterval(scanCaptions, 1000);
+      const enableInterval = setInterval(enableCaptions, 10000);
+      (window as any).__vexaCaptionIntervals = [scanInterval, enableInterval];
+      (window as any).__vexaCaptionObserver = observer;
+      (window as any).logBot?.('[GMeetCaptions] Passive caption sidecar started');
+    }
+
+    setupGoogleMeetCaptionSidecar();
 
     // Find active media elements with audio tracks (retry up to 10 times)
     let mediaElements: HTMLMediaElement[] = [];

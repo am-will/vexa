@@ -72,6 +72,7 @@ export interface UnifiedCallbackPayload {
   failure_stage?: FailureStage;
   timestamp?: string;
   speaker_events?: any[];
+  caption_events?: any[];
   // v0.10.5.3 Pack O: ring-buffer of last N structured-JSON log lines from
   // the bot's stdout, sent on terminal status_change for forensic capture.
   // meeting-api persists these into meetings.data.bot_logs JSONB.
@@ -101,6 +102,7 @@ export async function callStatusChangeCallback(
   completionReason?: CompletionReason,
   failureStage?: FailureStage,
   speakerEvents?: any[],
+  captionEvents?: any[],
   // v0.10.5.3 Pack O + Pack T — terminal-only forensic fields.
   // bot_logs: last N structured-JSON log lines from bot stdout (ring buffer).
   // bot_resources: cgroup memory + CPU summary at exit time.
@@ -140,6 +142,7 @@ export async function callStatusChangeCallback(
         failure_stage: failureStage,
         timestamp: new Date().toISOString(),
         speaker_events: speakerEvents,
+        caption_events: captionEvents,
         bot_logs: botLogs,
         bot_resources: botResources,
       };
