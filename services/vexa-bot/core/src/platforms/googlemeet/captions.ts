@@ -24,6 +24,29 @@ const UI_NAME_PATTERNS = [
   /^google participant \(/i,
   /spaces\//i,
   /devices\//i,
+  /^keyboard_arrow_/i,
+  /^format_size$/i,
+  /^language$/i,
+  /^send$/i,
+  /^info$/i,
+  /^\d{1,2}:\d{2}$/,
+  /_/,
+];
+
+const UI_TEXT_PATTERNS = [
+  /turn on microphone/i,
+  /turn on camera/i,
+  /audio settings/i,
+  /video settings/i,
+  /font size/i,
+  /font color/i,
+  /caption settings/i,
+  /open caption settings/i,
+  /meeting details/i,
+  /chat with everyone/i,
+  /meeting tools/i,
+  /^send message$/i,
+  /^english$/i,
 ];
 
 function normalizeSpaces(value: string): string {
@@ -44,6 +67,16 @@ function isUiOrBotName(name: string, botName?: string): boolean {
   return UI_NAME_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
+function isUiCaptionText(text: string, participantName: string): boolean {
+  const normalized = normalizeSpaces(text);
+  if (!normalized) return true;
+  if (normalized.length > 1000) return true;
+  const lower = normalized.toLowerCase();
+  const speakerLower = normalizeSpaces(participantName).toLowerCase();
+  if (speakerLower && lower === speakerLower) return true;
+  return UI_TEXT_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
 export function normalizeGoogleMeetCaptionEvent(
   speakerName: string,
   captionText: string,
@@ -55,6 +88,7 @@ export function normalizeGoogleMeetCaptionEvent(
   const text = normalizeSpaces(captionText);
 
   if (isUiOrBotName(participantName, botName)) return null;
+  if (isUiCaptionText(text, participantName)) return null;
   if (!text || text.length < 2) return null;
   if (text.length > 1000) return null;
 

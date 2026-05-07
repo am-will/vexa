@@ -35,6 +35,22 @@ function testRejectsBotAndUiCaptionNoise() {
     normalizeGoogleMeetCaptionEvent('Jordan Smith', '   ', 1000, 0),
     null,
   );
+  assert.equal(
+    normalizeGoogleMeetCaptionEvent('keyboard_arrow_up', 'Audio settings mic_off Turn on microphone (ctrl + d)', 1000, 0),
+    null,
+  );
+  assert.equal(
+    normalizeGoogleMeetCaptionEvent('format_size', 'Font size circle Font color settings Open caption settings', 1000, 0),
+    null,
+  );
+  assert.equal(
+    normalizeGoogleMeetCaptionEvent('4:14', 'AM Normalization test Normalization test', 1000, 0),
+    null,
+  );
+  assert.equal(
+    normalizeGoogleMeetCaptionEvent('Normalization test', 'Normalization test', 1000, 0),
+    null,
+  );
 }
 
 function testAccumulatorCoalescesPartialCaptionUpdates() {
