@@ -1325,7 +1325,8 @@ async function initPerSpeakerPipeline(botConfig: BotConfig): Promise<boolean> {
       submitInterval: 2,       // submit every 2s — lower latency
       confirmThreshold: 2,     // 2 consecutive matches — faster confirmation
       maxBufferDuration: 30,   // force-flush at 30s — matches Whisper training window
-      idleTimeoutSec: 15,      // 15s idle → emit + reset
+      idleTimeoutSec: 15,      // 15s idle cleanup fallback
+      turnInactivitySec: 0.4,  // 400ms quiet → close this speaker's current turn
     });
     // VAD gating moved to handlePerSpeakerAudioData entry (per-speaker streaming).
     // SpeakerStreamManager no longer does VAD — it only receives real speech.
@@ -1859,13 +1860,9 @@ async function handleTeamsCaptionData(speakerName: string, captionText: string, 
 
   const speakerId = `teams-${speakerName.replace(/\s+/g, '_')}`;
 
-  // When caption speaker changes, flush the PREVIOUS speaker's buffer immediately.
-  // This prevents cross-speaker contamination — the old speaker's buffer gets emitted
-  // before any of the new speaker's audio leaks into it.
-  if (lastCaptionSpeakerId && lastCaptionSpeakerId !== speakerId && speakerManager) {
-    log(`[PerSpeaker] Caption speaker change: flushing "${speakerManager.getSpeakerName(lastCaptionSpeakerId) || lastCaptionSpeakerId}" buffer`);
-    await speakerManager.flushSpeaker(lastCaptionSpeakerId);
-  }
+  // Do not hard-flush the previous speaker on caption speaker changes. People
+  // can overlap; SpeakerStreamManager closes each speaker's own turn after
+  // short inactivity so simultaneous speakers keep independent buffers.
   lastCaptionSpeakerId = speakerId;
 
   // Accumulate for speaker-mapper boundaries.
@@ -2500,8 +2497,11 @@ export async function runBot(botConfig: BotConfig): Promise<void> {// Store botC
       });
     }
     
+    const teamsBrowser = browserInstance;
+    if (!teamsBrowser) throw new Error("Teams browser launch failed");
+
     // Create context with CSP bypass to allow script injection (like Google Meet)
-    const context = await browserInstance.newContext({
+    const context = await teamsBrowser.newContext({
       permissions: ['microphone', 'camera'],
       ignoreHTTPSErrors: true,
       bypassCSP: true,
@@ -2565,8 +2565,11 @@ export async function runBot(botConfig: BotConfig): Promise<void> {// Store botC
       args: getBrowserArgs(!!botConfig.voiceAgentEnabled),
     });
 
+    const browser = browserInstance;
+    if (!browser) throw new Error("Browser launch failed");
+
     // Create a new page with permissions and viewport for non-Teams
-    const context = await browserInstance.newContext({
+    const context = await browser.newContext({
       permissions: ["camera", "microphone"],
       userAgent: userAgent,
       viewport: null, // CDP fullscreen removes browser chrome; window fills the 1920x1080 Xvfb display
