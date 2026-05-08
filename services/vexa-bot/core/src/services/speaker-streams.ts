@@ -61,6 +61,8 @@ export interface SpeakerStreamManagerConfig {
   maxBufferDuration?: number;
   /** Idle timeout — emit and reset after this many seconds of no audio. Default: 15 */
   idleTimeoutSec?: number;
+  /** Turn inactivity timeout — finalize a speaker turn after this many seconds of quiet. Default: 0.4 */
+  turnInactivitySec?: number;
   /** Sample rate. Default: 16000 */
   sampleRate?: number;
 }
@@ -73,6 +75,7 @@ export class SpeakerStreamManager {
   private confirmThreshold: number;
   private maxBufferDuration: number;
   private idleTimeoutSec: number;
+  private turnInactivitySec: number;
   private sampleRate: number;
   /** Audio carried forward from a flushed short segment — prepended to the next feedAudio call */
   private carryForward: Float32Array[] = [];
@@ -91,6 +94,7 @@ export class SpeakerStreamManager {
     this.confirmThreshold = config?.confirmThreshold ?? 2;
     this.maxBufferDuration = config?.maxBufferDuration ?? 30;
     this.idleTimeoutSec = config?.idleTimeoutSec ?? 15;
+    this.turnInactivitySec = config?.turnInactivitySec ?? 0.4;
     this.sampleRate = config?.sampleRate ?? 16000;
   }
 
@@ -377,15 +381,31 @@ export class SpeakerStreamManager {
     const unconfirmedSec = this.unconfirmedSamples(buffer) / this.sampleRate;
     const totalSec = buffer.totalSamples / this.sampleRate;
     const idleMs = Date.now() - buffer.lastAudioTimestamp;
+    const hasUnconfirmed = this.unconfirmedSamples(buffer) > 0;
 
-    // Idle timeout
-    if (idleMs > this.idleTimeoutSec * 1000 && this.unconfirmedSamples(buffer) > 0) {
-      if (!buffer.idleSubmitted) {
-        buffer.idleSubmitted = true;
-        log(`[SpeakerStreams] Idle submit for "${buffer.speakerName}" (${(idleMs/1000).toFixed(1)}s idle, final submission)`);
-        await this.submitBuffer(buffer);
+    // Speaker turn inactivity: close the current turn quickly after this
+    // speaker goes quiet. This is intentionally per-speaker, so overlapping
+    // speakers keep independent buffers instead of forcing a global switch.
+    if (idleMs > this.turnInactivitySec * 1000 && hasUnconfirmed) {
+      if (buffer.lastTranscript) {
+        log(`[SpeakerStreams] Turn inactivity emit for "${buffer.speakerName}" (${(idleMs/1000).toFixed(2)}s quiet)`);
+        this.emitSegment(buffer, buffer.lastTranscript);
+        this.fullReset(buffer);
         return;
       }
+      if (!buffer.idleSubmitted) {
+        buffer.idleSubmitted = true;
+        log(`[SpeakerStreams] Turn inactivity submit for "${buffer.speakerName}" (${(idleMs/1000).toFixed(2)}s quiet, final turn submission)`);
+        if (!buffer.inFlight) {
+          await this.submitBuffer(buffer);
+        }
+        return;
+      }
+    }
+
+    // Longer idle timeout: cleanup fallback if a final turn submission never
+    // produces usable text.
+    if (idleMs > this.idleTimeoutSec * 1000 && hasUnconfirmed) {
       if (!buffer.inFlight) {
         if (buffer.lastTranscript) {
           this.emitSegment(buffer, buffer.lastTranscript);

@@ -1,72 +1,36 @@
-# Codex — start here
+# Vexa Local Agent Guide
 
-This repo operates under a **strict stage state machine**. Before doing
-*anything*, you must orient yourself.
+This repo is Will's local/self-hosted Vexa workspace. The most important job for an agent here is knowing how to operate the local meeting automation without leaking secrets or disturbing running meetings.
 
-## First action — ALWAYS, every session
+## Repo Overview
 
-```bash
-python3 tests3/lib/stage.py probe
+- `services/vexa-bot/`: browser bot that joins Meet/Zoom/Teams, captures audio/captions, sends audio to transcription, and publishes transcript segments.
+- `services/meeting-api/`: meeting/bot API and transcript retrieval.
+- `services/runtime-api/`: launches bot containers.
+- `services/transcription-service/`: local faster-whisper compatible transcription service and CPU load balancer.
+- `deploy/compose/`: local compose stack.
+- `services/vexa-bot/core/src/services/speaker-streams.ts`: per-speaker buffering, Whisper submission, turn finalization, and segment confirmation.
+
+Local runtime-launched Google Meet bots should use:
+
+```text
+vexaai/vexa-bot:latest
 ```
 
-This prints the current stage + legal next stages + a one-line objective.
+After bot code changes, rebuild it:
 
-## Obey the stage
+```bash
+cd /Users/am.will/Applications/vexa
+cd services/vexa-bot/core && npm run build
+cd /Users/am.will/Applications/vexa
+docker build -t vexaai/vexa-bot:latest -f services/vexa-bot/Dockerfile services/vexa-bot
+```
 
-Each stage has an explicit contract at `tests3/stages/NN-<name>.md`
-(objective, inputs, outputs, exit condition, **may NOT** list). Read it
-before taking any action. If the user asks for something outside the
-current stage's `may NOT` list, **refuse** with a stage-aware message:
+## Local Helper CLIs
 
-> *"Currently in `<stage>`; that action is forbidden (`<rule>`). To do it,
-> transition via `<legal next stage>`."*
+These are user-local wrapper scripts, not upstream Vexa commands. They read credentials/tokens from local files. Do not print secrets.
 
-## Common situations — map to stage
-
-| user says                                    | likely stage                     |
-|----------------------------------------------|----------------------------------|
-| "debug X / fix Y / write code"               | `develop` (must be entered from `plan` or `triage`) |
-| "run the tests / check the gate"             | `validate` (must be entered from `deploy`) |
-| "classify failures / what broke"             | `triage` (entered from `validate` on red) |
-| "validate checklist / sign off"              | `human` (entered from `validate` on green) |
-| "ship it / merge to main"                    | `ship` (entered from `human`) |
-| "start a new release / groom issues"         | `groom` (entered from `idle`) |
-
-If the current stage doesn't match what the user asked for, **don't
-bumble around trying to make it work**. State the mismatch and the
-legal transition path.
-
-## Why this matters (read `tests3/README.md` for the full model)
-
-Vexa uses one nested-loop release protocol:
-
-- **INNER** — validate → triage → develop → deploy → validate. Mechanical,
-  cheap, repeats many times per day.
-- **MIDDLE** — validate (green) → human (code review + eyeroll) → ship.
-  Bounded human attention only.
-- **OUTER** — ship → market → issues → groom. Slow, expensive, real users.
-
-Drifting between stages destroys the Registry's regression guarantee
-and the MIDDLE loop's boundedness. Your stage-awareness is the
-enforcement.
-
-## You are NOT the user
-
-You may not mark `plan-approval.yaml`, `human-approval.yaml`, or any
-stage's exit condition `approved: true` without the user explicitly
-saying so in the current turn. Approval is a human signal — your job is
-to prepare the material for it, not to grant it.
-
-## If you're lost
-
-`python3 tests3/lib/stage.py probe` again. Then read
-`tests3/stages/<current>.md`. Then read `tests3/README.md`.
-
-## Local Vexa helper CLIs on this machine
-
-These are user-local wrapper scripts created for Will's local/self-hosted Vexa setup. They are not upstream Vexa commands. Do not print secrets; both helpers read credentials/tokens from local files.
-
-### `vexa-meet` — manual bot control
+### `vexa-meet`
 
 Path:
 
@@ -74,22 +38,13 @@ Path:
 /Users/am.will/.local/bin/vexa-meet
 ```
 
-Purpose: start, inspect, stop, transcript, and note Google Meet bots against the local Vexa API gateway.
-
-Useful commands:
+Use it for manual Google Meet bot control:
 
 ```bash
-# Show help
 vexa-meet --help
 vexa-meet start --help
 
-# Start a Google Meet bot manually. Default bot name is "Will's Meeting Bot".
-vexa-meet start https://meet.google.com/abc-defg-hij
-
-# Start with the saved Google bot-account browser profile.
-vexa-meet start --authenticated https://meet.google.com/abc-defg-hij
-
-# Start with the standard lifecycle policy used for calendar auto-join.
+# Start an authenticated bot with the standard lifecycle policy.
 vexa-meet start --authenticated \
   --name "Will's Meeting Bot" \
   --max-runtime-minutes 120 \
@@ -99,50 +54,29 @@ vexa-meet start --authenticated \
   --silence-timeout-minutes 60 \
   https://meet.google.com/abc-defg-hij
 
-# Show currently running bots and their Vexa/meeting status.
+# Inspect/stop/fetch transcript.
 vexa-meet status
-
-# Stop a bot by Meet code or URL.
 vexa-meet stop abc-defg-hij
-vexa-meet stop https://meet.google.com/abc-defg-hij
-
-# Fetch transcript for a Meet.
 vexa-meet transcript abc-defg-hij
-
-# Generate/save a local Markdown meeting note from the transcript.
+vexa-meet transcript abc-defg-hij --json
 vexa-meet note abc-defg-hij
 ```
 
-Authenticated browser-session commands:
+Authenticated browser session helpers:
 
 ```bash
-# Create/open a Vexa remote browser session for signing into the bot Google account.
 vexa-meet auth-session
-
-# After signing into the remote browser as amwill.catchall@gmail.com, save that browser storage.
 vexa-meet auth-save <session_id>
 ```
 
-Current intended bot account/name:
+Current intended bot identity:
 
 ```text
 Google bot account: amwill.catchall@gmail.com
 Bot display name: Will's Meeting Bot
 ```
 
-Current leave/lifecycle defaults sent by `vexa-meet start`:
-
-```text
-max runtime: 120 minutes
-wait for admission: 15 minutes
-wait for humans/no-show: 15 minutes
-leave after bot is alone: 2 minutes
-raw meeting-audio silence timeout: 60 minutes
-no Calendar scheduled-end based leave
-no transcript-silence based leave
-```
-
-### `vexa-calendar-watch` — local Calendar auto-join watcher
+## Calendar Auto-Join
 
 Path:
 
@@ -150,66 +84,40 @@ Path:
 /Users/am.will/.local/bin/vexa-calendar-watch
 ```
 
-Purpose: poll Google Calendar, find upcoming Google Meet events, and launch `vexa-meet start --authenticated ...` inside the join window. This is the local Option A watcher, not Vexa's unfinished upstream calendar-service.
+Purpose: poll Google Calendar, find upcoming Google Meet events, and launch `vexa-meet start --authenticated ...` inside the join window.
 
 Important files:
 
 ```text
-Config: /Users/am.will/.hermes/vexa-calendar-watch/config.json
-State:  /Users/am.will/.hermes/vexa-calendar-watch/state.json
-Log:    /Users/am.will/.hermes/vexa-calendar-watch/watch.log
-Token:  /Users/am.will/.hermes/vexa_calendar_token.json
+Config:      /Users/am.will/.hermes/vexa-calendar-watch/config.json
+State:       /Users/am.will/.hermes/vexa-calendar-watch/state.json
+Log:         /Users/am.will/.hermes/vexa-calendar-watch/watch.log
+Token:       /Users/am.will/.hermes/vexa_calendar_token.json
 LaunchAgent: /Users/am.will/Library/LaunchAgents/local.vexa-calendar-watch.plist
 ```
 
 Useful commands:
 
 ```bash
-# Show watcher config and last-run/state summary.
 vexa-calendar-watch status
-
-# Run one poll without launching anything.
 vexa-calendar-watch once --dry-run
-
-# Run one real poll. If an event is inside the join window, this launches the bot.
 vexa-calendar-watch once
-
-# Reset watcher state; useful before a test event so it can be launched again.
 vexa-calendar-watch reset --all
 ```
 
-Intended watcher config:
-
-```json
-{
-  "enabled": true,
-  "calendar_ids": ["primary"],
-  "lookahead_hours": 48,
-  "join_lead_minutes": 2,
-  "late_grace_minutes": 5,
-  "max_runtime_minutes": 120,
-  "wait_for_admission_minutes": 15,
-  "wait_for_humans_minutes": 15,
-  "leave_after_alone_minutes": 2,
-  "silence_timeout_minutes": 60,
-  "bot_name": "Will's Meeting Bot",
-  "authenticated": true
-}
-```
-
-The watcher launch path is:
+Launch path:
 
 ```text
-Google Calendar event -> launchd local.vexa-calendar-watch every 60s -> vexa-calendar-watch once -> vexa-meet start --authenticated -> Vexa bot container
+Google Calendar event
+-> launchd local.vexa-calendar-watch every 60s
+-> vexa-calendar-watch once
+-> vexa-meet start --authenticated
+-> Vexa bot container using vexaai/vexa-bot:latest
 ```
 
-`local.vexa-calendar-watch` is live/enabled. It is a one-shot interval poller, so `launchctl print` normally shows `state = not running` between minute ticks; that is expected.
+`local.vexa-calendar-watch` is a one-shot interval poller. `launchctl print` normally shows `state = not running` between minute ticks; that is expected. Check `runs` and `last exit code = 0`.
 
-Known caveat/fix: the watcher launch path is proven. Google Meet admission detection must stay strict: do not claim the bot is active/admitted unless a real in-meeting signal such as visible `Leave call` is present; prejoin/waiting-room pages can expose misleading DOM. Do not claim the bot is in the host waiting room unless host UI or a live bot screenshot/log confirms it.
-
-Speaker attribution policy: Google Meet DOM active-speaker signals are noisy. The local bot intentionally prefers unmapped/unknown speakers over wrong human names: Google Meet track→name locking now requires 6 exclusive-speaker votes at 90% consistency, overlap votes are ignored, and the participant-list-order fallback is disabled unless `VEXA_ENABLE_GMEET_PARTICIPANT_ORDER_FALLBACK=true` is explicitly set.
-
-### `vexa-notes-watch` — local post-meeting notes automation
+## Post-Meeting Notes Automation
 
 Path:
 
@@ -217,9 +125,9 @@ Path:
 /Users/am.will/.local/bin/vexa-notes-watch
 ```
 
-Purpose: after a Vexa bot leaves/completes, fetch the transcript, save the raw transcript, and run `codex exec` headlessly/non-interactively to generate a Markdown meeting summary, notes, decisions, and action items by person.
+Purpose: after a watcher-launched Vexa bot leaves/completes, fetch the transcript JSON, normalize it, save the raw transcript, and run `codex exec` headlessly to generate Markdown notes.
 
-Output paths:
+Output/state:
 
 ```text
 Raw transcripts: /Users/am.will/Applications/transcripts/
@@ -232,20 +140,11 @@ LaunchAgent:     /Users/am.will/Library/LaunchAgents/local.vexa-notes-watch.plis
 Useful commands:
 
 ```bash
-# Show notes watcher state.
 vexa-notes-watch status
-
-# Preview completed/launched meetings it would inspect.
 vexa-notes-watch once --dry-run
-
-# Run one real post-meeting notes pass.
 vexa-notes-watch once
-
-# Regenerate notes for a specific Meet code if needed.
-vexa-notes-watch once --meet-code jhh-dvyp-dcf --force
-
-# Reset notes state.
-vexa-notes-watch reset jhh-dvyp-dcf
+vexa-notes-watch once --meet-code abc-defg-hij --force
+vexa-notes-watch reset abc-defg-hij
 vexa-notes-watch reset --all
 ```
 
@@ -254,8 +153,97 @@ Automation policy:
 ```text
 launchd runs `vexa-notes-watch once` every 60 seconds.
 The script uses a lock file to avoid overlapping runs.
-If a meeting is complete but transcript has 0 segments, it marks pending_transcript and retries later.
+If a completed meeting has 0 transcript segments, it marks pending_transcript and retries later.
 If notes already exist, it skips unless --force is used.
-Codex command is non-interactive: codex exec --skip-git-repo-check --sandbox read-only --output-last-message <final-note-path> -
-macOS/TCC pitfall: do not make launchd Python read/rewrite a Codex `.tmp` note in `~/Documents`; Codex writes the final `.md` directly and Python only checks exit code / metadata.
+Codex writes directly to the final .md path with --output-last-message.
+Python should only check exit code / metadata for files in ~/Documents because macOS TCC can block launchd Python there.
 ```
+
+## Normalization And Captions
+
+The notes watcher trusts deterministic transcript/caption evidence over LLM interpretation. The LLM only summarizes the normalized transcript.
+
+Current behavior:
+
+- Fetches `vexa-meet transcript <meet> --json`.
+- Uses Vexa ASR segments as the base transcript.
+- Aligns Google Meet caption events by time/text to correct speaker labels only when evidence is high-confidence.
+- Filters caption events with epoch-like timestamps mixed into `relative_timestamp_ms`.
+- Deduplicates Google Meet caption DOM revisions and drops partial revisions when a better later revision exists.
+- Drops mixed-speaker composite captions when another known participant name appears inside the caption text.
+- Adds caption-derived transcript lines when a caption line is clearly missing from Vexa ASR.
+
+Example: if Vexa ASR misses `Will shall be going sixth` but Google Meet captions repeatedly captured it, the raw transcript should include a caption-derived line rather than letting the summary omit it.
+
+Generated raw transcript docs include a `Speaker Normalization` section with:
+
+```text
+Caption events
+Speaker labels changed
+Caption/Vexa agreed
+Caption-only lines added
+```
+
+The audit JSON lives beside the raw transcript:
+
+```text
+/Users/am.will/Applications/transcripts/<date title meet>.transcript.speaker-normalization.json
+```
+
+## Current Bot Transcript Policy
+
+The local bot should avoid monolithic per-speaker segments:
+
+- Flush on speaker inactivity, not simply because another speaker starts.
+- Treat overlap as independent active speaker buffers.
+- Close a speaker turn after 400ms of that speaker being quiet.
+- If speakers overlap, keep both buffers open and let VAD/track source decide what audio each buffer receives.
+- Prefer shorter unknown/ambiguous segments over confidently wrong names.
+
+Implementation locations:
+
+```text
+services/vexa-bot/core/src/services/speaker-streams.ts
+services/vexa-bot/core/src/index.ts
+/Users/am.will/.local/bin/vexa-notes-watch
+```
+
+After editing `speaker-streams.ts` or `index.ts`, run:
+
+```bash
+cd services/vexa-bot/core && npm run build
+docker build -t vexaai/vexa-bot:latest -f services/vexa-bot/Dockerfile services/vexa-bot
+```
+
+## Operational Checks
+
+Use these before declaring the automation healthy:
+
+```bash
+vexa-meet status
+vexa-calendar-watch status
+vexa-calendar-watch once --dry-run
+vexa-notes-watch status
+docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
+docker image inspect vexaai/vexa-bot:latest --format '{{.Id}} {{.Created}}'
+launchctl print gui/$(id -u)/local.vexa-calendar-watch
+launchctl print gui/$(id -u)/local.vexa-notes-watch
+```
+
+Expected watcher state:
+
+```text
+local.vexa-calendar-watch: run interval = 60 seconds, last exit code = 0
+local.vexa-notes-watch:    run interval = 60 seconds, last exit code = 0
+```
+
+If sandboxed commands cannot reach localhost, Docker, or `~/.hermes` lock files, rerun with appropriate local approval. This is common for `docker ps`, `curl localhost`, and watcher lock/state checks.
+
+## Caveats
+
+- Google Meet admission detection must stay strict. Do not claim active/admitted unless a real in-meeting signal such as visible `Leave call` is present.
+- Prejoin/waiting-room pages can expose misleading DOM like participant IDs, self-name, mic/camera controls, or generic toolbars.
+- `vexa-calendar-watch once --dry-run` records a preview only; it does not launch a bot.
+- Google Meet captions are useful evidence, but they are noisy DOM revisions. Deduplicate and sanity-check timestamps before using them.
+- Local Google Meet audio may be mixed rather than true per-participant channels. Overlap cannot be made perfect by buffering alone.
+- Voiceprints are biometric data. Keep local, encrypt where possible, and get consent.

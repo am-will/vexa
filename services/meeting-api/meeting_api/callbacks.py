@@ -254,6 +254,7 @@ class BotStatusChangePayload(BaseModel):
     failure_stage: Optional[MeetingFailureStage] = Field(None)
     timestamp: Optional[str] = Field(None)
     speaker_events: Optional[List[Dict]] = Field(None)
+    caption_events: Optional[List[Dict]] = Field(None)
     # v0.10.5.3 Pack O — last N structured-JSON log lines from bot stdout.
     # Sent only on terminal status (failed/completed). Persisted into
     # meetings.data.bot_logs JSONB after a 50 KB cap (apply at write-time
@@ -691,7 +692,7 @@ async def bot_status_change_callback(
     # them. Future operators querying a failed meeting now have the bot's
     # last log lines + memory peak in the meeting row.
     if new_status in (MeetingStatus.FAILED, MeetingStatus.COMPLETED) and (
-        payload.bot_logs or payload.bot_resources
+        payload.bot_logs or payload.bot_resources or payload.caption_events
     ):
         if not meeting.data:
             meeting.data = {}
@@ -712,6 +713,8 @@ async def bot_status_change_callback(
             d["bot_logs_truncated"] = len(kept) < len(payload.bot_logs)
         if payload.bot_resources:
             d["bot_resources"] = payload.bot_resources
+        if payload.caption_events:
+            d["caption_events"] = payload.caption_events
         meeting.data = d
         attributes.flag_modified(meeting, "data")
         # Don't commit here — leaves it to the branch logic below to commit
@@ -786,6 +789,8 @@ async def bot_status_change_callback(
                     meeting.data = {}
                 d = dict(meeting.data)
                 d["speaker_events"] = payload.speaker_events
+                if payload.caption_events:
+                    d["caption_events"] = payload.caption_events
                 meeting.data = d
                 attributes.flag_modified(meeting, "data")
             await db.commit()

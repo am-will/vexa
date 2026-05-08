@@ -418,6 +418,33 @@ class TestStatusChangeCallback:
         assert data["status"] == "processed"
 
     @pytest.mark.asyncio
+    async def test_completed_status_persists_caption_events(self, client, mock_db, mock_redis):
+        """COMPLETED status persists Google Meet caption side-channel evidence."""
+        caption_events = [{
+            "event_type": "CAPTION_TEXT",
+            "participant_name": "Jordan Smith",
+            "caption_text": "Can you pull up the report?",
+            "relative_timestamp_ms": 2500,
+            "source": "google_meet_captions",
+        }]
+        meeting = make_meeting(status=MeetingStatus.ACTIVE.value, data={})
+
+        with _patch_find_meeting(meeting):
+            with _patch_flag_modified():
+                with patch("meeting_api.callbacks.update_meeting_status", new_callable=AsyncMock, return_value=True):
+                    with patch("meeting_api.callbacks.publish_meeting_status_change", new_callable=AsyncMock):
+                        with patch("meeting_api.callbacks.schedule_status_webhook_task", new_callable=AsyncMock):
+                            with patch("meeting_api.callbacks.run_all_tasks", new_callable=AsyncMock):
+                                resp = await client.post("/bots/internal/callback/status_change", json={
+                                    "connection_id": TEST_SESSION_UID,
+                                    "status": "completed",
+                                    "caption_events": caption_events,
+                                })
+
+        assert resp.status_code == 200
+        assert meeting.data["caption_events"] == caption_events
+
+    @pytest.mark.asyncio
     async def test_failed_status_stores_error(self, client, mock_db, mock_redis):
         """FAILED status → stores error details."""
         meeting = make_meeting(status=MeetingStatus.ACTIVE.value)
