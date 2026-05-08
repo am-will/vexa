@@ -1,0 +1,107 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"/Users/am.will/Applications/vexa/.codex/hooks/aitmpl-codex--automation--change-logger\" && ./.codex/hooks/automation-change-logger-posttooluse-posttooluse-1-1.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"/Users/am.will/Applications/vexa/.codex/hooks/aitmpl-codex--automation--change-logger\" && ./.codex/hooks/automation-change-logger-posttooluse-posttooluse-2-1.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"/Users/am.will/Applications/vexa/.codex/hooks/aitmpl-codex--automation--change-logger\" && ./.codex/hooks/automation-change-logger-posttooluse-posttooluse-3-1.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"/Users/am.will/Applications/vexa/.codex/hooks/aitmpl-codex--automation--change-logger\" && ./.codex/hooks/automation-change-logger-posttooluse-posttooluse-4-1.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"/Users/am.will/Applications/vexa/.codex/hooks/aitmpl-codex--development-tools--change-tracker\" && ./.codex/hooks/development-tools-change-tracker-posttooluse-posttooluse-1-1.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"/Users/am.will/Applications/vexa/.codex/hooks/aitmpl-codex--development-tools--change-tracker\" && ./.codex/hooks/development-tools-change-tracker-posttooluse-posttooluse-2-1.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"/Users/am.will/Applications/vexa/.codex/hooks/aitmpl-codex--git-workflow--smart-commit\" && ./.codex/hooks/git-workflow-smart-commit-posttooluse-posttooluse-1-1.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"/Users/am.will/Applications/vexa/.codex/hooks/aitmpl-codex--git-workflow--smart-commit\" && ./.codex/hooks/git-workflow-smart-commit-posttooluse-posttooluse-2-1.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"/Users/am.will/Applications/vexa/.codex/hooks/aitmpl-codex--security--security-scanner\" && ./.codex/hooks/security-security-scanner-posttooluse-posttooluse-1-1.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"/Users/am.will/Applications/vexa/.codex/hooks/aitmpl-codex--security--dangerous-command-blocker\" && ./.codex/hooks/security-dangerous-command-blocker-pretooluse-pretooluse-1-1.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"/Users/am.will/Applications/vexa/.codex/hooks/aitmpl-codex--security--secret-scanner\" && ./.codex/hooks/security-secret-scanner-pretooluse-pretooluse-1-1.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
